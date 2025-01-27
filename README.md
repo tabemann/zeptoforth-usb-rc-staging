@@ -1,7 +1,6 @@
 # zeptoforth usb staging
 
-## New for this release RC1
+## New for this release RC3
 
-* Turnkey operation ( if used - sample provided )
-* Support for USB power-only usage ( after 20 second delay )
+* Refactored usb modem operation to fix dormant bug and intermittent clipping of welcome message.
 
