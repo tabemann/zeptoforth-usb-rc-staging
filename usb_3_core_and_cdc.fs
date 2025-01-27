@@ -48,6 +48,9 @@ begin-module usb-core
   \ Line notification complete
   variable line-notification-complete?
 
+  \ Has the USB CDC console been readied
+  variable usb-readied?
+
   \ USB Start-Of-Frame callback handler
   variable sof-callback-handler
 
@@ -577,6 +580,7 @@ begin-module usb-core
     USB_SIE_STATUS_BUS_RESET USB_SIE_STATUS !
     0 USB_DEVICE_ADDRESS !
     false usb-device-configured? !
+    false usb-readied? !
   ;
 
   : usb-update-transfer-bytes { endpoint -- }
@@ -786,6 +790,7 @@ begin-module usb-core
     false usb-device-connected? !
     false usb-device-configured? !
     false line-notification-complete? !
+    false usb-readied? !
   
     ['] usb-irq-handler usbctrl-vector vector!
 
@@ -810,6 +815,7 @@ begin-module usb-core
       saved-reboot-hook @ ?execute
       false usb-device-connected? !
       false usb-device-configured? !
+      false usb-readied? !
       init-port-signals
       usb-set-modem-offline
       20000. timer::delay-us

@@ -48,23 +48,62 @@ continue-module usb
     \ Transmit buffer simple lock
     slock-size buffer: usb-emit-lock
 
+    \ Start endpoint 1 data transfer from the Pico to the host
     : start-ep1-data-transfer-to-host ( -- )
-      tx-empty? not if
-        ep1-start-ring-transfer-to-host
-      then
+      tx-empty? not if ep1-start-ring-transfer-to-host then
     ;
 
+    \ Start endpoint 1 data transfer from the host to the Pico
     : start-ep1-data-transfer-to-pico ( -- )
-      rx-free 63 > if
-        EP1-to-Pico 64 usb-receive-data-packet
-      then
+      rx-free 63 > if EP1-to-Pico 64 usb-receive-data-packet then
     ;
 
     \ USB Start of Frame Interrupts, every 1 ms
     : handle-sof-from-host ( -- )
-      update-watchdog \ update watchdog to prevent reboot (USB core is running)
       EP1-to-Pico endpoint-busy? @ not if start-ep1-data-transfer-to-pico then
       EP1-to-Host endpoint-busy? @ not if start-ep1-data-transfer-to-host then
+    ;
+    
+    \ Wait for the USB device to be connected
+    : usb-wait-for-device-connected ( -- )
+      begin usb-device-connected? @ dup not if pause-wo-reschedule then until
+    ;
+
+    \ Wait for the USB device to be configured
+    : usb-wait-for-device-configured ( -- )     
+      begin usb-device-configured? @ dup not if pause-wo-reschedule then until
+    ;
+
+    \ Wait for device
+    : usb-wait-for-device ( -- )
+      begin
+        usb-device-connected? @ not if usb-wait-for-device-connected then
+
+        usb-device-connected? @ if
+          \ Pico connected to active USB host - not just USB powered
+        
+          \ Must wait for host to set configuration - allow up to 180s for cold-boot host PC  
+          usb-device-configured? @ not if usb-wait-for-device-configured then
+
+          usb-device-configured? @ if
+            usb-readied? @ not if
+              [:
+                [:
+                  ['] handle-sof-from-host sof-callback-handler !
+                  
+                  \ Allow hosts and clients time to settle
+                  100000. timer::delay-us
+                  
+                  true usb-readied? multicore::test-set if
+                    usb-set-modem-online
+                  then
+                ;] usb-key-lock with-slock
+              ;] usb-emit-lock with-slock
+            then
+          then
+        then
+        usb-device-connected? @ usb-device-configured? @ and
+      until
     ;
 
     \ Byte available to read from rx ring buffer ?
@@ -77,53 +116,27 @@ continue-module usb
       usb-device-configured? @ usb-dtr? and tx-full? not and  
     ;
 
+    \ Enqueue a byte to be transmitted via the USB CDC console
     : usb-emit ( c -- )
       begin
-        [:          
-          usb-emit? dup if swap write-tx then
-        ;] usb-emit-lock with-slock
+        usb-wait-for-device
+        [: usb-emit? dup if swap write-tx then ;] usb-emit-lock with-slock
         dup not if pause-reschedule-last then
       until
     ;
 
+    \ Dequeue a byte that has been received from the USB CDC console
     : usb-key ( -- c)
       begin
-        [:
-          usb-key? dup if read-rx swap then
-        ;] usb-key-lock with-slock
+        usb-wait-for-device
+        [: usb-key? dup if read-rx swap then ;] usb-key-lock with-slock
         dup not if pause-reschedule-last then
       until
     ;
 
-    : usb-wait-for-device-connected ( -- )
-      systick-counter 200000 + { systick-end } \ 20 seconds max wait if USB wall/battery power only
-      begin
-        usb-device-connected? @ not if pause-wo-reschedule then
-        usb-device-connected? @ systick-counter systick-end > or 
-      until
-    ;
-    
-    : usb-wait-for-device-configured ( -- )     
-      systick-counter 1800000 + { systick-end } \ up to 180 seconds if PC cold boot
-      begin
-        usb-device-configured? @ not if pause-wo-reschedule then
-        usb-device-configured? @ systick-counter systick-end > or 
-      until
-    ;
-
-    : usb-wait-for-client-connected ( -- )     \ optional blocking wait if required.
-      begin
-        DTR? @ not if pause-wo-reschedule then
-        DTR? @ if true else false then
-      until
-    ;
-
+    \ Flush the USB CDC console
     : usb-flush-console ( -- )
-      systick-counter 30000 + { systick-end } \ 3.0 seconds
-      begin
-        tx-empty? not if pause-wo-reschedule then
-        tx-empty? systick-counter systick-end > or 
-      until
+      begin tx-empty? not if pause-wo-reschedule then until
     ;
 
     \ Switch to USB console
@@ -140,15 +153,6 @@ continue-module usb
       ['] usb-flush-console error-flush-console-hook !
     ;
 
-    : start-usb-console ( -- )
-      ['] handle-sof-from-host sof-callback-handler !
-      enable-watchdog \ to reboot if USB becomes wedged for any reason
-      disable-multitasker-update-watchdog
-      100000. timer::delay-us \ allow hosts and clients time to settle
-      switch-to-usb-console 
-      usb-set-modem-online
-    ;
-
     \ Initialize USB console
     : init-usb-console ( -- )
       
@@ -160,37 +164,7 @@ continue-module usb
       usb-emit-lock init-slock
 
       usb-insert-device
-
-      usb-wait-for-device-connected
-
-      usb-device-connected? @ if       \ Pico connected to active USB host - not just USB powered
-        
-        usb-wait-for-device-configured \ must wait for host to set configuration - allow up to 180s for cold-boot host PC  
-                                       
-        usb-device-configured? @ if 
-
-          start-usb-console 
-      
-        else
-
-          \ Pico usb device configuration not set by host. 
-          \ Possible host or device configuration issues.
-          \ Remove device and fall through to UART serial
-          \ and turnkey if configured.
-        
-        usb-remove-device
-
-        then
-
-      else
-
-        \ No usb host, assume on wall or battery power. 
-        \ Remove device and fall through to UART serial
-        \ and turnkey if configured.
-
-        usb-remove-device
-
-      then
+      switch-to-usb-console
     ;
 
     initializer init-usb-console
@@ -198,7 +172,7 @@ continue-module usb
   end-module> import
 
   \ Select the USB serial console
-  : usb-console ( -- ) start-usb-console ;
+  : usb-console ( -- ) switch-to-usb-console ;
 
   \ Set the curent input to usb within an xt
   : with-usb-input ( xt -- )
