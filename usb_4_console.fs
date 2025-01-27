@@ -24,14 +24,13 @@
 \ Note also that some clients may hang if Pico reboots and does not recover.
 
 \ minicom -F " Zeptoforth | %D | %b | %t | Minicom %V | %T | %H Help "  -z zeptoforth  -D /dev/ttyACM1
-\             <------------ minicom status bar display ------------->  <settings file>       
+\             <------------ minicom status bar display ------------->   <settings file> <serial device>     
 
 compile-to-flash
 
 continue-module usb
 
   console import
-  watchdog import
   
   begin-module usb-internal
 
@@ -74,6 +73,11 @@ continue-module usb
       begin usb-device-configured? @ dup not if pause-wo-reschedule then until
     ;
 
+    \ Wait for host to ack our modem signals line state notification  
+    : usb-wait-for-line-state-notification ( -- )
+      begin line-notification-complete? @ dup not if pause-wo-reschedule then until
+    ;
+
     \ Wait for device
     : usb-wait-for-device ( -- )
       begin
@@ -82,7 +86,7 @@ continue-module usb
         usb-device-connected? @ if
           \ Pico connected to active USB host - not just USB powered
         
-          \ Must wait for host to set configuration - allow up to 180s for cold-boot host PC  
+          \ Must wait for host to set configuration - allow 2-3 mins for cold-boot host PC  
           usb-device-configured? @ not if usb-wait-for-device-configured then
 
           usb-device-configured? @ if
@@ -90,12 +94,14 @@ continue-module usb
               [:
                 [:
                   ['] handle-sof-from-host sof-callback-handler !
-                  
-                  \ Allow hosts and clients time to settle
-                  100000. timer::delay-us
+
+                  \ Enable Start of Frame interrupts for EP1 tx/rx
+                  USB_INTS_START_OF_FRAME USB_INTE bis! 
                   
                   true usb-readied? multicore::test-set if
-                    usb-set-modem-online
+              
+                    usb-wait-for-line-state-notification 
+                  
                   then
                 ;] usb-key-lock with-slock
               ;] usb-emit-lock with-slock

@@ -30,10 +30,8 @@ end-module> import
 
 begin-module usb-core
 
-  armv6m import
   task import
-  alarm import
-  serial import
+  armv6m import
   interrupt import
 
   usb-constants import
@@ -97,7 +95,7 @@ begin-module usb-core
   $04 c, $24 c, $02 c, $06 c,                                         \ CDC Functional Descriptor - Abstract Control Management
   $05 c, $24 c, $06 c, $00 c, $01 c,                                  \ CDC Functional Descriptor - Union
   $05 c, $24 c, $01 c, $01 c, $01 c,                                  \ CDC Functional Descriptor - Call Management
-  $07 c, $05 c, $83 c, $03 c, $10 c, $00 c, $01 c,                    \ Endpoint Descriptor: EP3 In - (max packet size = 16)
+  $07 c, $05 c, $83 c, $03 c, $10 c, $00 c, $FF c,                    \ Endpoint Descriptor: EP3 In - (max packet size = 16)
 
   $09 c, $04 c, $01 c, $00 c, $02 c, $0A c, $00 c, $00 c, $00 c,      \ CDC Data Class Interface Descriptor: CDC Data
   $07 c, $05 c, $81 c, $02 c, $40 c, $00 c, $00 c,                    \ Endpoint Descriptor: EP1 In  - Bulk Transfer Type
@@ -413,42 +411,42 @@ begin-module usb-core
 
   \ inform host of Pico's line signal state
   : usb-send-line-state-notification ( -- )
+    true EP3-to-Host endpoint-busy? !
     false line-notification-complete? !
     0 line-state-notification dce-signals !
     DSR?  @ if BITMAP_DSR line-state-notification dce-signals hbis! then
     DCD?  @ if BITMAP_DCD line-state-notification dce-signals hbis! then
     RING? @ if BITMAP_RING line-state-notification dce-signals hbis! then
-    usb-device-configured? @ if
-      EP3-to-Host 10 line-state-notification usb-start-transfer-to-host
-    then
+    EP3-to-Host 10 line-state-notification usb-start-transfer-to-host 
   ;
 
   \ tell host client that Pico is online (useful to some clients)
   : usb-set-modem-online ( -- )
-    true DCD? !   \ data carrier detected
-    true DSR? !   \ data set (modem) ready
-    false RING? ! \ Ring Indicate off
-    usb-send-line-state-notification
+    usb-device-configured? @ usb-device-connected? @ and if
+      true DCD? !   \ data carrier detected
+      true DSR? !   \ data set (modem) ready
+      false RING? ! \ Ring Indicate off
+      usb-send-line-state-notification
+    then
   ;
 
   \ tell host client that Pico is offline (useful to some clients)
   : usb-set-modem-offline ( -- )
-    false DCD? !  \ data carrier lost
-    false DSR? !  \ data set (modem) not ready
-    false RING? ! \ Ring Indicate off
-    usb-send-line-state-notification
+    usb-device-configured? @ usb-device-connected? @ and if
+      false DCD? !  \ data carrier lost
+      false DSR? !  \ data set (modem) not ready
+      false RING? ! \ Ring Indicate off
+      usb-send-line-state-notification
+    then
   ;
 
   : usb-set-device-configuration ( -- )
+    usb-ack-control-out-request
+    init-cdc-line-coding
     init-usb-function-endpoints
     init-line-state-notification
-    init-cdc-line-coding
-    USB_BUF_CTRL_DATA1_PID EP0-to-Host next-pid !
-    \ Enable Start of Frame interrupts for EP1 tx/rx
-    USB_INTS_START_OF_FRAME USB_INTE bis!
     EP1-to-Pico 64 usb-receive-data-packet
-    usb-ack-control-out-request
-    true usb-device-configured? !
+    true usb-device-configured? ! 
   ;
 
   : usb-send-descriptor-to-host ( -- )
@@ -503,6 +501,9 @@ begin-module usb-core
     100000. timer::delay-us \ allow hosts and clients time to settle
     DTE_SIGNALS BITMAP_DTR and if true DTR? ! else false DTR? ! then
     DTE_SIGNALS BITMAP_RTS and if true RTS? ! else false RTS? ! then
+
+    \ some hosts/clients may not ack line notification until they have set DTR & RTS
+    DTR? @ RTS? @ and if usb-set-modem-online then \ set online here, not in console
 
     \ DTR? @ if light-a-led-or-something then
     \ RTS? @ if light-a-led-or-something then  
@@ -753,14 +754,10 @@ begin-module usb-core
   ;
 
   : usb-remove-device ( -- )
-    USB_INTS_BUS_RESET              USB_INTE bic!
-    USB_INTS_SETUP_REQ              USB_INTE bic!
-    USB_INTS_DEV_CONNECT            USB_INTE bic! 
-    USB_INTS_BUFFER_STATUS          USB_INTE bic!
-    USB_INTS_START_OF_FRAME         USB_INTE bic!
-    USB_SIE_CTRL_PULLUP_EN          USB_SIE_CONTROL bic!
-    USB_SIE_CTRL_EP0_INT_1BUF       USB_SIE_CONTROL bic!
-    USB_MAIN_CTRL_CONTROLLER_EN     USB_MAIN_CONTROL bic!
+    0 USB_INTE !
+    0 USB_INTS !
+    0 USB_SIE_CONTROL !
+    0 USB_MAIN_CONTROL !
   ;
 
   \ Get DTR (Data Terminal Ready) signal setting from host client
