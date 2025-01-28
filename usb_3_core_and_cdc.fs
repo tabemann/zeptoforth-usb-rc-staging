@@ -210,16 +210,14 @@ begin-module usb-core
     endpoint usb-endpoint-profile 0 fill
     ep-number endpoint endpoint-number !
     ep-max endpoint max-packet-size ! 
+    ep-tx? endpoint endpoint-tx? !
   ;
 
-  : init-usb-endpoint-0 { ep-max ep-tx? endpoint -- }
+  : init-usb-endpoint-0 { ep-max ep-tx? ep-buffer-control endpoint -- }
     ep-max ep-tx? 0 endpoint init-ep-common
-    EP0_DPRAM_SHARED endpoint dpram-address !
     USB_EP_TYPE_CONTROL endpoint transfer-type !
-    ep-tx? if
-      USB_BUFFER_CONTROL_TO_HOST_BASE else
-      USB_BUFFER_CONTROL_TO_PICO_BASE 
-    then endpoint buffer-control !
+    ep-buffer-control endpoint buffer-control !
+    EP0_DPRAM_SHARED endpoint dpram-address !
     0 endpoint buffer-control @ !
 
     \ there is no endpoint control register for EP0, interrupt enable for EP0 comes from SIE_CTRL
@@ -255,8 +253,8 @@ begin-module usb-core
 
   \ Initialize USB default endpoints 0
   : init-usb-default-endpoints ( -- )
-    64 true  EP0-to-Host init-usb-endpoint-0
-    64 false EP0-to-Pico init-usb-endpoint-0
+    64 true  USB_BUFFER_CONTROL_TO_HOST_BASE EP0-to-Host init-usb-endpoint-0
+    64 false USB_BUFFER_CONTROL_TO_PICO_BASE EP0-to-Pico init-usb-endpoint-0
   ;
 
   \ Initialize CDC/ACM Function Endpoints

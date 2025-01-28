@@ -47,6 +47,8 @@ alarm-size aligned-buffer: turnkey-led-alarm
 
   turnkey-wait-for-client-connect 
 
+  false ack-nak-enabled !
+
   10 countdown !
 
   cr
