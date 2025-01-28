@@ -1,6 +1,6 @@
 # zeptoforth usb staging
 
-## New for this release RC3
+## New for this release RC4
 
-* Refactored usb modem operation to fix dormant bug and intermittent clipping of welcome message.
+* Minor tidy-up of EP0 setup. No other fixes or changes.
 
