@@ -784,6 +784,7 @@ begin-module usb-core
     0 sof-callback-handler !
     USB_DPRAM_Base dpram-size 0 fill
     init-usb-default-endpoints
+    true usb::usb-special-enabled? !
     false usb-device-connected? !
     false usb-device-configured? !
     false line-notification-complete? !
