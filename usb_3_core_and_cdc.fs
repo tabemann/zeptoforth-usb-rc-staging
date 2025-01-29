@@ -763,7 +763,7 @@ begin-module usb-core
     DTR? @
   ;
 
-  \ Get modem online status (set by start-usb-console)
+  \ Get modem online status (set in response to host raising DTR)
   : usb-modem-online? ( -- online? )
     DSR? @ DCD? @ and
   ;
