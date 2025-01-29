@@ -770,7 +770,7 @@ begin-module usb-core
 
   \ Get modem online status (set in response to host raising DTR)
   : usb-modem-online? ( -- online? )
-    DSR? @ DCD? @ and
+    DSR? @ DCD? @ and line-notification-complete? @ and
   ;
   
   : reset-usb-hardware ( -- )
