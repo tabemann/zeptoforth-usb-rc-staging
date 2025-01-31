@@ -166,7 +166,7 @@ continue-module usb
       usb-emit-lock init-slock
 
       usb-insert-device
-      500000. timer::delay-us
+
       switch-to-usb-console
     ;
 

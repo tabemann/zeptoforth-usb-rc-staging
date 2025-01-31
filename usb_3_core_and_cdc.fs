@@ -242,8 +242,8 @@ begin-module usb-core
     ep-type EP_CTRL_BUFFER_TYPE_LSB lshift endpoint endpoint-type !
     ep-number endpoint ep-tx? if init-ep-x-to-host else init-ep-x-to-pico then  
     0 endpoint buffer-control @ !
-    endpoint dpram-address @ $FFC0 and    endpoint endpoint-control @ bis!
     endpoint endpoint-type @              endpoint endpoint-control @ bis!
+    endpoint dpram-address @ $FFC0 and    endpoint endpoint-control @ bis!
     USB_EP_ENABLE_INTERRUPT_PER_BUFFER    endpoint endpoint-control @ bis! 
     USB_EP_ENABLE                         endpoint endpoint-control @ bis!   
   ;
@@ -564,11 +564,9 @@ begin-module usb-core
     USB_SETUP_PACKET 0 + c@ $80 and usb-setup setup-direction? c!
     USB_SETUP_PACKET 0 + c@ $1f and usb-setup setup-recipient c!
     USB_SETUP_PACKET 0 + c@ $60 and usb-setup setup-request-type c!
-
     USB_SETUP_PACKET 1 + c@ usb-setup setup-request c!
     USB_SETUP_PACKET 2 + c@ usb-setup setup-descriptor-index c!
     USB_SETUP_PACKET 3 + c@ usb-setup setup-descriptor-type c!
-
     USB_SETUP_PACKET 2 + h@ usb-setup setup-value h!
     USB_SETUP_PACKET 4 + h@ usb-setup setup-index h!
     USB_SETUP_PACKET 6 + h@ usb-setup setup-length h!
@@ -760,14 +758,14 @@ begin-module usb-core
     then
   ;
 
-  \ Device connected to active USB host
+  \ Device connected to active USB host (SIE = Serial Interface Engine)
   : usb-handle-device-connect ( -- )
-    USB_SIE_STATUS USB_SIE_STATUS_DEVICE_CONNECTED and if
+    USB_SIE_STATUS USB_SIE_STATUS_DEVICE_CONNECTED and if  \ 
       true usb-device-connected? !
     else
       false usb-device-connected? !
     then
-    USB_SIE_STATUS_DEVICE_CONNECTED USB_SIE_STATUS bis!  \ write to clear
+    USB_SIE_STATUS_DEVICE_CONNECTED USB_SIE_STATUS bis!  \ write to clear 
   ;
 
   \ General USB hardware interrupt handler
