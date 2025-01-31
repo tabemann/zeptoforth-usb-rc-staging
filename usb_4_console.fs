@@ -41,10 +41,10 @@ continue-module usb
     usb-constants import
     usb-cdc-buffers import
 
-    \ Receive buffer simple lock
+    \ Console key simple lock buffer
     slock-size buffer: usb-key-lock
     
-    \ Transmit buffer simple lock
+    \ Console emit simple lock buffer
     slock-size buffer: usb-emit-lock
 
     \ Start endpoint 1 data transfer from the Pico to the host
@@ -73,7 +73,7 @@ continue-module usb
       begin usb-device-configured? @ dup not if pause-wo-reschedule then until
     ;
 
-    \ Wait for host to ack our modem signals line state notification  
+    \ Wait for host to ack Pico modem signals line state notification  
     : usb-wait-for-line-state-notification ( -- )
       begin line-notification-complete? @ dup not if pause-wo-reschedule then until
     ;
@@ -83,9 +83,8 @@ continue-module usb
       begin
         usb-device-connected? @ not if usb-wait-for-device-connected then
 
-        usb-device-connected? @ if
-          \ Pico connected to active USB host - not just USB powered
-        
+        usb-device-connected? @ if \ Pico connected to active USB host - not just USB powered
+      
           \ Must wait for host to set configuration - allow 2-3 mins for cold-boot host PC  
           usb-device-configured? @ not if usb-wait-for-device-configured then
 
@@ -94,14 +93,11 @@ continue-module usb
               [:
                 [:
                   ['] handle-sof-from-host sof-callback-handler !
-
-                  \ Enable Start of Frame interrupts for EP1 tx/rx
-                  USB_INTS_START_OF_FRAME USB_INTE bis! 
+           
+                  USB_INTS_START_OF_FRAME USB_INTE bis!  \ Enable Start of Frame interrupts for EP1 tx/rx
                   
-                  true usb-readied? multicore::test-set if
-              
+                  true usb-readied? multicore::test-set if              
                     usb-wait-for-line-state-notification 
-                  
                   then
                 ;] usb-key-lock with-slock
               ;] usb-emit-lock with-slock
@@ -170,6 +166,7 @@ continue-module usb
       usb-emit-lock init-slock
 
       usb-insert-device
+      500000. timer::delay-us
       switch-to-usb-console
     ;
 

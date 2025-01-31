@@ -41,13 +41,13 @@ begin-module usb-cdc-buffers
 \ Receive ring-buffer size  - must be power-of-two value
 8 bit constant rx-buffer-size
 
-\ RAM variable for rx buffer read-index
+\ RAM variable for tx buffer read-index
 variable tx-read-index
 
 \ RAM variable for rx buffer read-index
 variable rx-read-index
 
-\ RAM variable for rx buffer write-index
+\ RAM variable for tx buffer write-index
 variable tx-write-index
 
 \ RAM variable for rx buffer write-index
@@ -65,26 +65,31 @@ tx-buffer-size buffer: tx-buffer
 \ rx buffer to Pico
 rx-buffer-size buffer: rx-buffer
 
+\ Initialise tx ring buffer
 : init-tx-ring ( -- )
   0 tx-read-index !
   0 tx-write-index !
   tx-buffer tx-buffer-size 0 fill
 ;
 
+\ Initialise rx ring buffer
 : init-rx-ring ( -- )
   0 rx-read-index !
   0 rx-write-index !
   rx-buffer rx-buffer-size 0 fill
 ;
 
+\ Usable tx ring buffer zize
 : tx-size ( -- u )
   tx-buffer-size 1 -
 ;
 
+\ Usable rx ring buffer zize
 : rx-size ( -- u )
   rx-buffer-size 1 -
 ;
 
+\ Number of bytes used in tx ring buffer
 : tx-used ( -- u )
   tx-read-index @ { read-index }
   tx-write-index @ { write-index }
@@ -95,6 +100,7 @@ rx-buffer-size buffer: rx-buffer
   then
 ;
 
+\ Number of bytes used in rx ring buffer
 : rx-used ( -- u )
   rx-read-index @ { read-index }
   rx-write-index @ { write-index }
