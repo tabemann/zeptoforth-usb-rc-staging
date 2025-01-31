@@ -1,7 +1,5 @@
 # zeptoforth usb staging
 
-## New for this release RC4
+## New for this release RC5
 
-* Minor tidy-up of EP0 setup.
-* update (currently unused) usb-modem-online? word to check if host has ack'd setting.
-
+* Add comments to word definitions
