@@ -30,10 +30,8 @@ end-module> import
 
 begin-module usb-core
 
-  armv6m import
   task import
-  alarm import
-  serial import
+  armv6m import
   interrupt import
 
   usb-constants import
@@ -42,10 +40,10 @@ begin-module usb-core
   \ Device connected to USB host 
   variable usb-device-connected?
 
-  \ Device configuration set
+  \ Device configuration set by host
   variable usb-device-configured?
 
-  \ Line notification complete
+  \ Line state notification to host complete
   variable line-notification-complete?
 
   \ Has the USB CDC console been readied
@@ -72,104 +70,92 @@ begin-module usb-core
   \ (Pico - RI) Ring Indicate
   variable RING?
 
-  create device-data
-
-  $12 c, $01 c,                                                       \ USB_DEVICE_DESCRIPTOR
-  $00 c, $02 c,                                                       \ USB_VERSION_BCD
-  $EF c, $02 c, $01 c,                                                \ USB_MISC_IAD_DEVICE (IAD = Interface Association Device)
-  $40 c,                                                              \ USB_EP0_MAX
-  $83 c, $04 c,                                                       \ USB_VENDOR_ID
-  $40 c, $57 c,                                                       \ USB_PRODUCT_ID
-  $00 c, $02 c,                                                       \ USB_PRODUCT_BCD
-  $00 c,                                                              \ STRING_MANUFACTURER (0 = none)
-  $00 c,                                                              \ STRING_PRODUCT      (0 = none)
-  $00 c,                                                              \ STRING_SERIAL       (0 = none)
-  $01 c,                                                              \ CONFIGURATIONS
-
+  create device-data                                                    \ USB Standard Device Descriptor - 18 bytes
+    $12 c, $01 c,                                                       \ USB_DEVICE_DESCRIPTOR
+    $00 c, $02 c,                                                       \ USB_VERSION_BCD
+    $EF c, $02 c, $01 c,                                                \ USB_MISC_IAD_DEVICE (IAD = Interface Association Device)
+    $40 c,                                                              \ USB_EP0_MAX
+    $83 c, $04 c,                                                       \ USB_VENDOR_ID
+    $40 c, $57 c,                                                       \ USB_PRODUCT_ID
+    $00 c, $02 c,                                                       \ USB_PRODUCT_BCD
+    $00 c,                                                              \ STRING_MANUFACTURER (0 = none)
+    $00 c,                                                              \ STRING_PRODUCT      (0 = none)
+    $00 c,                                                              \ STRING_SERIAL       (0 = none)
+    $01 c,                                                              \ CONFIGURATIONS
   here device-data - cell align, constant device-data-size
 
-  create config-data
-
-  $09 c, $02 c, $4B c, $00 c, $02 c, $01 c, $00 c, $80 c, $FA c,      \ Configuration Descriptor (75 bytes)
-  $08 c, $0B c, $00 c, $02 c, $02 c, $02 c, $00 c, $00 c,             \ Interface Association Descriptor (IAD)
-  $09 c, $04 c, $00 c, $00 c, $01 c, $02 c, $02 c, $00 c, $00 c,      \ CDC Class Interface Descriptor (CCI)
-  $05 c, $24 c, $00 c, $20 c, $01 c,                                  \ CDC Functional Descriptor - Header (CDC Class revision 1.20)
-  $04 c, $24 c, $02 c, $06 c,                                         \ CDC Functional Descriptor - Abstract Control Management
-  $05 c, $24 c, $06 c, $00 c, $01 c,                                  \ CDC Functional Descriptor - Union
-  $05 c, $24 c, $01 c, $01 c, $01 c,                                  \ CDC Functional Descriptor - Call Management
-  $07 c, $05 c, $83 c, $03 c, $10 c, $00 c, $01 c,                    \ Endpoint Descriptor: EP3 In - (max packet size = 16)
-
-  $09 c, $04 c, $01 c, $00 c, $02 c, $0A c, $00 c, $00 c, $00 c,      \ CDC Data Class Interface Descriptor: CDC Data
-  $07 c, $05 c, $81 c, $02 c, $40 c, $00 c, $00 c,                    \ Endpoint Descriptor: EP1 In  - Bulk Transfer Type
-  $07 c, $05 c, $01 c, $02 c, $40 c, $00 c, $00 c,                    \ Endpoint Descriptor: EP1 Out - Bulk Transfer Type
-
+  create config-data                                                    \ USB Standard Configuration Descriptor
+    $09 c, $02 c, $4B c, $00 c, $02 c, $01 c, $00 c, $80 c, $FA c,      \ Configuration Descriptor (75 bytes)
+    $08 c, $0B c, $00 c, $02 c, $02 c, $02 c, $00 c, $00 c,             \ Interface Association Descriptor (IAD)
+    $09 c, $04 c, $00 c, $00 c, $01 c, $02 c, $02 c, $00 c, $00 c,      \ CDC Class Interface Descriptor (CCI)
+    $05 c, $24 c, $00 c, $20 c, $01 c,                                  \ CDC Functional Descriptor - Header (CDC Class revision 1.20)
+    $04 c, $24 c, $02 c, $06 c,                                         \ CDC Functional Descriptor - Abstract Control Management
+    $05 c, $24 c, $06 c, $00 c, $01 c,                                  \ CDC Functional Descriptor - Union
+    $05 c, $24 c, $01 c, $01 c, $01 c,                                  \ CDC Functional Descriptor - Call Management
+    $07 c, $05 c, $83 c, $03 c, $10 c, $00 c, $FF c,                    \ Endpoint Descriptor: EP3 In - (max packet size = 16)
+    $09 c, $04 c, $01 c, $00 c, $02 c, $0A c, $00 c, $00 c, $00 c,      \ CDC Data Class Interface Descriptor: CDC Data
+    $07 c, $05 c, $81 c, $02 c, $40 c, $00 c, $00 c,                    \ Endpoint Descriptor: EP1 In  - Bulk Transfer Type
+    $07 c, $05 c, $01 c, $02 c, $40 c, $00 c, $00 c,                    \ Endpoint Descriptor: EP1 Out - Bulk Transfer Type
   here config-data - cell align, constant config-data-size
 
-  create string-data
+  create language-string-data      \ USB Language String Descriptor 
+    $04 c, $03 c, $09 c, $04 c,    \ Language String for LANGUAGE_ENGLISH_US
+  here language-string-data - cell align, constant language-string-data-size
 
-  $04 c, $03 c, $09 c, $04 c,                                         \ Language String Descriptor LANGUAGE_ENGLISH_US
-
-  here string-data - cell align, constant string-data-size
-
+  \ USB CDC/ACM Class line state notification descriptor
   begin-structure line-state-notification-descriptor
-
     cfield: line-request-type
     cfield: line-request
     hfield: line-value
     hfield: line-index
     hfield: line-length
     hfield: dce-signals
-
   end-structure  \ 10 bytes to send
 
+  \ USB Endpoint structure
   begin-structure usb-endpoint-profile
-
-    field: endpoint-tx?         \ Is endpoint transmit to host (USB Direction = In)
-    field: endpoint-ack?        \ Send ACK on buffer completion (control transfers)
-    field: endpoint-busy?       \ Is endpoint currently active tx/rx ? (As set by Forth - not USB hardware)
-    field: endpoint-number      \ Endpoint Number, for debug etc.
-    field: max-packet-size      \ Endpoint maximum packet size
-    field: dpram-address        \ DPRAM address in Pico hardware
-    field: next-pid             \ Endpoint next PID (0 for PID0 or 8192 for PID1)
-    field: buffer-control       \ Endpoint buffer control register address
-    field: endpoint-control     \ Endpoint control register address
-    field: transfer-type        \ Endpoint transfer type (Control, Bulk, Interrupt)
-    field: transfer-bytes       \ Endpoint transfer bytes (sent or received on buffer completion)
-    field: processed-bytes      \ Endpoint processed bytes (Multipacket)
-    field: pending-bytes        \ Endpoint bytes pending (Multipacket)
-    field: total-bytes          \ Total transfer bytes (Multipacket)
-    field: source-address       \ Source data address (Multipacket transmit)
-    field: callback-handler     \ Callback handler for CDC set line coding
-
+    field: endpoint-tx?             \ Is endpoint transmit to host (USB Direction = In)
+    field: endpoint-ack?            \ Send ACK on buffer completion (control transfers)
+    field: endpoint-busy?           \ Is endpoint currently active tx/rx ? (As set by Forth - not USB hardware)
+    field: endpoint-type            \ Endpoint transfer type (Control, Bulk, Interrupt)
+    field: endpoint-number          \ Endpoint number, for debug etc.
+    field: max-packet-size          \ Endpoint maximum packet size
+    field: dpram-address            \ DPRAM address in Pico hardware
+    field: next-pid                 \ Endpoint next PID (0 for PID0 or 8192 for PID1)
+    field: buffer-control           \ Endpoint buffer control register address
+    field: endpoint-control         \ Endpoint control register address
+    field: transfer-bytes           \ Endpoint transfer bytes (sent or received on buffer completion)
+    field: processed-bytes          \ Endpoint processed bytes (Multipacket)
+    field: pending-bytes            \ Endpoint bytes pending (Multipacket)
+    field: total-bytes              \ Total transfer bytes (Multipacket)
+    field: source-address           \ Source data address (Multipacket transmit)
+    field: callback-handler         \ Callback handler for CDC set line coding
   end-structure
 
+  \ USB Setup Command structure
   begin-structure usb-setup-command
-
-    cfield: setup-descriptor-type
-    cfield: setup-descriptor-index
-    cfield: setup-request-type        \ Setup packet request type
-    cfield: setup-direction?          \ Setup direction ( $80 = to Host )
-    cfield: setup-recipient           \ Setup Recipient ( device, interface, endpoint )
-    cfield: setup-request             \ Setup packet request
-    hfield: setup-length              \ Setup packet length
-    hfield: setup-value               \ Setup packet value
-    hfield: setup-index               \ Setup packet index
-
+    cfield: setup-descriptor-type   \ Setup descriptor type (if used)
+    cfield: setup-descriptor-index  \ Setup descriptor index (if used)
+    cfield: setup-request-type      \ Setup packet request type
+    cfield: setup-direction?        \ Setup direction ($80/true = Pico to Host)
+    cfield: setup-recipient         \ Setup Recipient (device, interface, endpoint)
+    cfield: setup-request           \ Setup packet request
+    hfield: setup-length            \ Setup packet length
+    hfield: setup-value             \ Setup packet value
+    hfield: setup-index             \ Setup packet index
   end-structure
 
+  \ CDC Serial Port Settings - 7 bytes 
   begin-structure cdc-line-coding-profile
-
     field:  cdc-line-baud
     cfield: cdc-line-parity
     cfield: cdc-line-stop
     cfield: cdc-line-data
+  end-structure  
 
-  end-structure   \ 7 bytes to send
-
+  \ Setup, CDC Class and Endpoint buffers
   usb-setup-command buffer: usb-setup
-
   cdc-line-coding-profile buffer: cdc-line-coding
-
   line-state-notification-descriptor buffer: line-state-notification
 
   usb-endpoint-profile buffer: EP0-to-Host    \ Default endpoint 0 to Host
@@ -178,8 +164,8 @@ begin-module usb-core
   usb-endpoint-profile buffer: EP1-to-Pico    \ Function endpoint 1 to Pico
   usb-endpoint-profile buffer: EP3-to-Host    \ Function endpoint 3 to Host
 
+  \ Initialise all port signals off 
   : init-port-signals ( -- )
-
     false DTR? !   \ Data Terminal Ready - from Host to Pico
     false RTS? !   \ Ready to Send       - from Host to Pico
     false DSR? !   \ Data Set Ready      - from Pico to Host
@@ -187,13 +173,15 @@ begin-module usb-core
     false RING? !  \ Ring Indicate       - from Pico to Host
   ;
 
+  \ Initialise serial port settings to 115200-8-N-1 default
   : init-cdc-line-coding ( -- )
-    115200 cdc-line-coding cdc-line-baud !      \ 115200 baud
-    0 cdc-line-coding cdc-line-parity c!        \ no parity
-    0 cdc-line-coding cdc-line-stop c!          \ 1 stop bit
-    8 cdc-line-coding cdc-line-data c!          \ 8 data bits
+    115200 cdc-line-coding cdc-line-baud !    \ 115200 baud
+    0 cdc-line-coding cdc-line-parity c!      \ no parity
+    0 cdc-line-coding cdc-line-stop c!        \ 1 stop bit
+    8 cdc-line-coding cdc-line-data c!        \ 8 data bits
   ;
 
+  \ USB CDC Class descriptor sent to Host - 10 bytes
   : init-line-state-notification ( -- )
     $A1 line-state-notification line-request-type c!
     $20 line-state-notification line-request c!
@@ -204,61 +192,66 @@ begin-module usb-core
     0 EP3-to-Host next-pid !
   ;
 
+  \ Clear down setup packet buffer to zeros
   : usb-init-setup-packet ( -- )
     usb-setup usb-setup-command 0 fill
   ;
 
+  \ Endpoint common initialisation (code de-duplication)
   : init-ep-common { ep-max ep-tx? ep-number endpoint }
     endpoint usb-endpoint-profile 0 fill
     ep-number endpoint endpoint-number !
     ep-max endpoint max-packet-size ! 
+    ep-tx? endpoint endpoint-tx? !
   ;
 
-  : init-usb-endpoint-0 { ep-max ep-tx? endpoint -- }
+  \ Initialise Control Endpoint 0 (fixed dpram, no EP control register)
+  : init-usb-endpoint-0 { ep-max ep-tx? ep-buffer-control endpoint -- }
     ep-max ep-tx? 0 endpoint init-ep-common
+    USB_EP_TYPE_CONTROL endpoint endpoint-type !
+    ep-buffer-control endpoint buffer-control !
     EP0_DPRAM_SHARED endpoint dpram-address !
-    USB_EP_TYPE_CONTROL endpoint transfer-type !
-    ep-tx? if
-      USB_BUFFER_CONTROL_TO_HOST_BASE else
-      USB_BUFFER_CONTROL_TO_PICO_BASE 
-    then endpoint buffer-control !
     0 endpoint buffer-control @ !
-
-    \ there is no endpoint control register for EP0, interrupt enable for EP0 comes from SIE_CTRL
+    \ there is no endpoint control register for EP0 
+    \ interrupt enable for EP0 comes from SIE_CTRL
   ;
 
+  \ Calculate and set endpoint x dpram address in endpoint profile
+  : set-ep-x-dpram-address { ep-number endpoint dpram-start-address }
+    128 ep-number 1 - * { dpram-offset }
+    USB_DPRAM_Base dpram-start-address or dpram-offset + endpoint dpram-address !
+  ;
+
+  \ Initialise Endpoint x to Host (set dpram and control registers calculation)
   : init-ep-x-to-host { ep-number endpoint -- }
-    128 ep-number 1 - * { dpram-offset }
-    $0180 dpram-offset + { ep-dpram-address } \ first half of usb hardware dpram
-    USB_BUFFER_CONTROL_TO_HOST_BASE ep-number 3 lshift + endpoint buffer-control !
+    ep-number endpoint $0180 set-ep-x-dpram-address \ 1st half of usb h/w dpram
     USB_EP_CONTROL_TO_HOST_BASE ep-number 3 lshift + endpoint endpoint-control !
-    ep-dpram-address $5010_0000 + endpoint dpram-address !
-    ep-dpram-address endpoint endpoint-control @ !
+    USB_BUFFER_CONTROL_TO_HOST_BASE ep-number 3 lshift + endpoint buffer-control !
   ;
 
+  \ Initialise Endpoint x to Pico (set dpram and control registers calculation)
   : init-ep-x-to-pico { ep-number endpoint -- }
-    128 ep-number 1 - * { dpram-offset }
-    $0900 dpram-offset + { ep-dpram-address } \ second half of usb hardware dpram
-    USB_BUFFER_CONTROL_TO_PICO_BASE ep-number 3 lshift + endpoint buffer-control !
+    ep-number endpoint $0900 set-ep-x-dpram-address \ 2nd half of usb h/w dpram
     USB_EP_CONTROL_TO_PICO_BASE ep-number 3 lshift + endpoint endpoint-control !
-    ep-dpram-address $5010_0000 + endpoint dpram-address !
-    ep-dpram-address endpoint endpoint-control @ !
+    USB_BUFFER_CONTROL_TO_PICO_BASE ep-number 3 lshift + endpoint buffer-control !
   ;
 
+  \ Initialise Endpoint x to Host or to Pico 
   : init-usb-endpoint-x { ep-max ep-tx? ep-type ep-number endpoint -- }
     ep-max ep-tx? ep-number endpoint init-ep-common
-    ep-type EP_CTRL_BUFFER_TYPE_LSB lshift endpoint transfer-type !
+    ep-type EP_CTRL_BUFFER_TYPE_LSB lshift endpoint endpoint-type !
     ep-number endpoint ep-tx? if init-ep-x-to-host else init-ep-x-to-pico then  
     0 endpoint buffer-control @ !
-    endpoint transfer-type @              endpoint endpoint-control @ bis!
+    endpoint endpoint-type @              endpoint endpoint-control @ bis!
+    endpoint dpram-address @ $FFC0 and    endpoint endpoint-control @ bis!
     USB_EP_ENABLE_INTERRUPT_PER_BUFFER    endpoint endpoint-control @ bis! 
     USB_EP_ENABLE                         endpoint endpoint-control @ bis!   
   ;
 
-  \ Initialize USB default endpoints 0
+  \ Initialize USB default/control endpoints 0
   : init-usb-default-endpoints ( -- )
-    64 true  EP0-to-Host init-usb-endpoint-0
-    64 false EP0-to-Pico init-usb-endpoint-0
+    64 true  USB_BUFFER_CONTROL_TO_HOST_BASE EP0-to-Host init-usb-endpoint-0
+    64 false USB_BUFFER_CONTROL_TO_PICO_BASE EP0-to-Pico init-usb-endpoint-0
   ;
 
   \ Initialize CDC/ACM Function Endpoints
@@ -268,6 +261,7 @@ begin-module usb-core
     16 true  USB_EP_TYPE_INTERRUPT  3 EP3-to-Host init-usb-endpoint-x
   ;
 
+  \ Toggle data PID DATA0/DATA1 on endpoint buffer completion
   : usb-toggle-data-pid { endpoint -- }
     endpoint next-pid @ if
       USB_BUF_CTRL_DATA0_PID
@@ -276,26 +270,31 @@ begin-module usb-core
     then endpoint next-pid !
   ;
 
+  \ Set buffer available to Host - final step in sending data packet 
   : usb-set-buffer-available { endpoint -- }
     code[ b> >mark b> >mark b> >mark b> >mark b> >mark b> >mark ]code
     USB_BUF_CTRL_AVAIL endpoint buffer-control @ bis!
   ;
 
+  \ Mark buffer as full and set to available
   : usb-dispatch-buffer { endpoint -- }
     USB_BUF_CTRL_FULL endpoint buffer-control @ bis!
     endpoint usb-set-buffer-available
   ;
 
+  \ Receive zero-length-packet (ZLP) from host - control and function endpoints
   : usb-receive-zero-length-packet  { endpoint -- }
     endpoint next-pid @ endpoint buffer-control @ !
     endpoint usb-set-buffer-available
   ;
 
+  \ Send zero-length-packet (ZLP) to host - control and function endpoints
   : usb-send-zero-length-packet { endpoint -- }
     endpoint next-pid @ USB_BUF_CTRL_FULL or endpoint buffer-control @ !
     endpoint usb-set-buffer-available
   ;
 
+  \ Send stall packet for unsupported requests
   : usb-send-stall-packet { endpoint -- }
     true endpoint endpoint-busy? !
     endpoint next-pid @ endpoint buffer-control @ !
@@ -303,6 +302,7 @@ begin-module usb-core
     USB_BUF_CTRL_STALL endpoint buffer-control @ bis!
   ;
 
+  \ Start data packet transmission - set bytes and next-pid then dispatch
   : usb-send-data-packet { endpoint bytes -- }
     true endpoint endpoint-busy? !
     0 endpoint transfer-bytes !
@@ -310,6 +310,7 @@ begin-module usb-core
     endpoint usb-dispatch-buffer
   ;
 
+  \ Start data packet reception - complete when buffer IRQ received
   : usb-receive-data-packet { endpoint bytes -- }
     true endpoint endpoint-busy? !
     0 endpoint transfer-bytes !
@@ -327,23 +328,25 @@ begin-module usb-core
     EP0-to-Pico usb-receive-zero-length-packet
   ;
 
+  \ Return USB device address as previously set by host, or 0 if not set
   : usb-get-device-address ( -- )
     USB_DEVICE_ADDRESS @ $7F and
   ;
 
-  \ Set USB hardware device address
+  \ Set USB hardware device address as instructed by host
   : usb-set-device-address ( -- )
     usb-ack-control-out-request
     1000. timer::delay-us
     usb-setup setup-value h@ USB_DEVICE_ADDRESS !
   ;
 
+  \ Build data packet from supplied source starting address
   : usb-build-data-packet { endpoint bytes source-data -- }
-    \ do not exceed max packet size
     endpoint max-packet-size @ bytes min { packet-bytes }
     source-data endpoint dpram-address @ packet-bytes move
   ;
 
+  \ Start data transfer to host (single or multi-packet)
   : usb-start-transfer-to-host { host-endpoint total-data-bytes source-data-address -- }
     total-data-bytes host-endpoint total-bytes !
     source-data-address host-endpoint source-address !
@@ -353,12 +356,11 @@ begin-module usb-core
     host-endpoint packet-bytes usb-send-data-packet
   ;
 
+  \ Start control transfer to host (single or multi-packet)
   : usb-start-control-transfer-to-host { total-data-bytes source-data-address -- }
-    0 EP0-to-Host transfer-bytes !
     0 EP0-to-Host processed-bytes !
     total-data-bytes EP0-to-Host total-bytes !
     total-data-bytes EP0-to-Host pending-bytes !
-
     usb-get-device-address if
       true EP0-to-Host endpoint-ack? !
       EP0-to-Host total-data-bytes source-data-address usb-start-transfer-to-host
@@ -369,12 +371,14 @@ begin-module usb-core
     then
   ;
 
+  \ End control transfer to host (single or multi-packet)
   : usb-end-control-transfer-to-host ( -- )
     usb-ack-control-in-request
     false EP0-to-Host endpoint-ack? !
     false EP0-to-Host endpoint-busy? !
   ;
 
+  \ Send device descriptor (default size 8 or full-length) to host
   : usb-send-device-descriptor ( -- )
     usb-setup setup-length h@ device-data-size = if
       device-data-size
@@ -383,7 +387,8 @@ begin-module usb-core
     then
     device-data usb-start-control-transfer-to-host
   ;
-
+  
+  \ Send configuration descriptor (default size 9 or full-length) to host
   : usb-send-config-descriptor ( -- )
     usb-setup setup-length h@ config-data-size = if
       config-data-size
@@ -393,64 +398,69 @@ begin-module usb-core
     config-data usb-start-control-transfer-to-host
   ;
 
+  \ Send language string descriptor to host
   : usb-send-string-descriptor ( -- )
     usb-setup setup-index h@ 0 = if
-      4 string-data usb-start-control-transfer-to-host
+      4 language-string-data usb-start-control-transfer-to-host
     else
       usb-ack-control-in-request
     then
   ;
 
+  \ Stall incoming request we cannot process
   : usb-stall-ep0-request-to-pico ( -- )
     EP0_STALL_TO_PICO EP0_STALL_ARM bis!
     EP0-to-Host usb-send-stall-packet
   ;
 
+  \ Stall outgoing request we cannot process
   : usb-stall-ep0-respond-to-host ( -- )
     EP0_STALL_TO_HOST EP0_STALL_ARM bis!
     EP0-to-Host usb-send-stall-packet
   ;
 
-  \ inform host of Pico's line signal state
+  \ Inform host of Pico's line signal state (send line state notification)
   : usb-send-line-state-notification ( -- )
+    true EP3-to-Host endpoint-busy? !
     false line-notification-complete? !
     0 line-state-notification dce-signals !
     DSR?  @ if BITMAP_DSR line-state-notification dce-signals hbis! then
     DCD?  @ if BITMAP_DCD line-state-notification dce-signals hbis! then
     RING? @ if BITMAP_RING line-state-notification dce-signals hbis! then
-    usb-device-configured? @ if
-      EP3-to-Host 10 line-state-notification usb-start-transfer-to-host
+    EP3-to-Host 10 line-state-notification usb-start-transfer-to-host \ 10 bytes to send
+  ;
+
+  \ Tell host client that Pico is online (useful to some clients)
+  : usb-set-modem-online ( -- )
+    usb-device-configured? @ usb-device-connected? @ and if
+      true DCD? !   \ data carrier detected
+      true DSR? !   \ data set (modem) ready
+      false RING? ! \ Ring Indicate off
+      usb-send-line-state-notification
     then
   ;
 
-  \ tell host client that Pico is online (useful to some clients)
-  : usb-set-modem-online ( -- )
-    true DCD? !   \ data carrier detected
-    true DSR? !   \ data set (modem) ready
-    false RING? ! \ Ring Indicate off
-    usb-send-line-state-notification
-  ;
-
-  \ tell host client that Pico is offline (useful to some clients)
+  \ Tell host client that Pico is offline (useful to some clients)
   : usb-set-modem-offline ( -- )
-    false DCD? !  \ data carrier lost
-    false DSR? !  \ data set (modem) not ready
-    false RING? ! \ Ring Indicate off
-    usb-send-line-state-notification
+    usb-device-configured? @ usb-device-connected? @ and if
+      false DCD? !  \ data carrier lost
+      false DSR? !  \ data set (modem) not ready
+      false RING? ! \ Ring Indicate off
+      usb-send-line-state-notification
+    then
   ;
 
+  \ Set device configuration when instructed to by host
   : usb-set-device-configuration ( -- )
+    usb-ack-control-out-request
+    init-cdc-line-coding
     init-usb-function-endpoints
     init-line-state-notification
-    init-cdc-line-coding
-    USB_BUF_CTRL_DATA1_PID EP0-to-Host next-pid !
-    \ Enable Start of Frame interrupts for EP1 tx/rx
-    USB_INTS_START_OF_FRAME USB_INTE bis!
     EP1-to-Pico 64 usb-receive-data-packet
-    usb-ack-control-out-request
-    true usb-device-configured? !
+    true usb-device-configured? ! \ device not ready to use until this point reached
   ;
 
+  \ Send requested descriptor type to host
   : usb-send-descriptor-to-host ( -- )
     usb-setup setup-descriptor-type c@ case
       USB_DT_DEVICE of usb-send-device-descriptor endof
@@ -462,6 +472,7 @@ begin-module usb-core
     endcase
   ;
 
+  \ Route standard setup type request to Host request handler word
   : usb-setup-type-standard-respond-to-host ( -- )
     usb-setup setup-request c@ case
       USB_REQUEST_GET_DESCRIPTOR of usb-send-descriptor-to-host endof
@@ -469,6 +480,7 @@ begin-module usb-core
     endcase
   ;
 
+  \ Route standard setup type request to Pico request handler word
   : usb-setup-type-standard-request-to-pico ( -- )
     usb-setup setup-request c@ case
       USB_REQUEST_SET_ADDRESS of usb-set-device-address endof
@@ -477,6 +489,7 @@ begin-module usb-core
     endcase
   ;
 
+  \ USB standard setup type direction routing
   : usb-setup-type-standard ( -- )
     usb-setup setup-direction? c@ if
       usb-setup-type-standard-respond-to-host
@@ -485,15 +498,15 @@ begin-module usb-core
     then
   ;
 
-  \ tell host our speed/data/parity/stop bit settings - e.g. 115200-8-N-1
+  \ Tell host our current speed/data/parity/stop bit settings - e.g. 115200-8-N-1
   : usb-class-get-line-coding ( -- )
-    7 cdc-line-coding usb-start-control-transfer-to-host
+    7 cdc-line-coding usb-start-control-transfer-to-host \ fixed 7 bytes to send
   ;
 
-  \ start callback if host wants us to set our speed/data/parity/stop bit settings
+  \ Start callback if host wants us to set our speed/data/parity/stop bit settings
   : usb-class-set-line-coding ( -- )
     true EP0-to-Pico callback-handler !
-    EP0-to-Pico 7 usb-receive-data-packet
+    EP0-to-Pico 7 usb-receive-data-packet \ 7 bytes expected to receive
   ;
 
   \ DTE signals from host terminal client (zeptocomjs, Minicom, PuTTY, tio et al)
@@ -504,25 +517,31 @@ begin-module usb-core
     DTE_SIGNALS BITMAP_DTR and if true DTR? ! else false DTR? ! then
     DTE_SIGNALS BITMAP_RTS and if true RTS? ! else false RTS? ! then
 
+    \ some hosts/clients may not ack line notification until they have set DTR & RTS
+    DTR? @ RTS? @ and if usb-set-modem-online then \ set online here, not in console
+
     \ DTR? @ if light-a-led-or-something then
     \ RTS? @ if light-a-led-or-something then  
   ;
 
+  \ Process CDC break condition received from client
   : usb-class-set-line-break ( -- )
     usb-ack-control-out-request
-    \ some clients may toggle break by sending with value = $FFFF followed by value = $0000
+    \ some clients may toggle break by sending with setup value = $FFFF followed by $0000
     \ CDC break is a usable signal state here as many clients are capable of sending it.
     usb-setup setup-value h@ $FFFF = if
     \ useful action can go here
     then 
   ;
 
+  \ Route CDC class setup type request to Host request handler word
   : usb-setup-type-class-respond-to-host ( -- )
     usb-setup setup-request c@ case
       CDC_CLASS_GET_LINE_CODING of usb-class-get-line-coding endof
     endcase
   ;
 
+   \ Route CDC class setup type request to Pico request handler word
   : usb-setup-type-class-request-to-pico ( -- )
     usb-setup setup-request c@ case
       CDC_CLASS_SET_LINE_BREAK of usb-class-set-line-break endof
@@ -531,6 +550,7 @@ begin-module usb-core
     endcase
   ;
 
+  \ USB class setup type direction routing
   : usb-setup-type-class ( -- )
     usb-setup setup-direction? c@ if
       usb-setup-type-class-respond-to-host
@@ -539,20 +559,20 @@ begin-module usb-core
     then
   ;
 
+  \ Prepare setup packet once here for use by subsequent handlers
   : usb-prepare-setup-packet ( -- )
     USB_SETUP_PACKET 0 + c@ $80 and usb-setup setup-direction? c!
     USB_SETUP_PACKET 0 + c@ $1f and usb-setup setup-recipient c!
     USB_SETUP_PACKET 0 + c@ $60 and usb-setup setup-request-type c!
-
     USB_SETUP_PACKET 1 + c@ usb-setup setup-request c!
     USB_SETUP_PACKET 2 + c@ usb-setup setup-descriptor-index c!
     USB_SETUP_PACKET 3 + c@ usb-setup setup-descriptor-type c!
-
     USB_SETUP_PACKET 2 + h@ usb-setup setup-value h!
     USB_SETUP_PACKET 4 + h@ usb-setup setup-index h!
     USB_SETUP_PACKET 6 + h@ usb-setup setup-length h!
   ;
 
+  \ USB setup packet buffer preparation
   : usb-prepare-setup-direction ( -- )
     usb-setup setup-direction? c@ if
       USB_BUF_CTRL_AVAIL  EP0-to-Host buffer-control @ bis!
@@ -563,6 +583,7 @@ begin-module usb-core
     then
   ;
 
+  \ USB setup packet handler, including setup request-type routing
   : usb-handle-setup-packet ( -- )
     USB_SIE_STATUS_SETUP_REC USB_SIE_STATUS !
     usb-prepare-setup-packet
@@ -576,6 +597,7 @@ begin-module usb-core
     endcase
   ;
 
+  \ USB bus reset handler 
   : usb-handle-bus-reset ( -- )
     USB_SIE_STATUS_BUS_RESET USB_SIE_STATUS !
     0 USB_DEVICE_ADDRESS !
@@ -583,23 +605,28 @@ begin-module usb-core
     false usb-readied? !
   ;
 
+  \ Update endpoint structure transfer bytes for data packets sent/received 
   : usb-update-transfer-bytes { endpoint -- }
     endpoint buffer-control @ @ USB_BUF_CTRL_LENGTH_MASK and endpoint transfer-bytes !
   ;
 
+  \ Update endpoint byte counts for multipacket transfers
   : usb-update-endpoint-byte-counts { endpoint -- }
     endpoint processed-bytes @ endpoint transfer-bytes @ + endpoint processed-bytes !
     endpoint total-bytes @ endpoint processed-bytes @ - endpoint pending-bytes !
   ;
 
+  \ Calculate next source address for multipacket transfers
   : usb-get-continue-source-address { endpoint -- }
     endpoint source-address @ endpoint processed-bytes @ +
   ;
 
+  \ Calculate next packet size for multipacket transfers
   : usb-get-next-packet-size-to-host { endpoint -- }
     endpoint pending-bytes @ endpoint max-packet-size @ min 0 max  \ check against negative values
   ;
 
+  \ USB Start-of-Frame handler - used by zeptoforth console
   : usb-handle-start-of-frame ( -- )
     \ this could probably be designed out eventually but
     \ is useful as a kind of USB console watchdog for now
@@ -608,9 +635,9 @@ begin-module usb-core
     usb-device-configured? @ if sof-callback-handler @ ?execute then
   ;
 
+  \ EP0 to Host buffer completion handler - including Multipacket transfers
   : ep0-handler-to-host ( -- )
-    \ Write to clear
-    USB_BUFFER_STATUS_EP0_TO_HOST USB_BUFFER_STATUS bis!
+    USB_BUFFER_STATUS_EP0_TO_HOST USB_BUFFER_STATUS bis!  \ Write to clear
     EP0-to-Host usb-update-transfer-bytes
     EP0-to-Host usb-toggle-data-pid
     EP0-to-Host usb-update-endpoint-byte-counts
@@ -632,6 +659,7 @@ begin-module usb-core
     usb-ack-control-out-request
   ;
 
+  \ EP0 to Pico buffer completion handler - including callback handler
   : ep0-handler-to-pico ( -- )
     USB_BUFFER_STATUS_EP0_TO_PICO USB_BUFFER_STATUS bis!
     EP0-to-Pico usb-update-transfer-bytes
@@ -640,14 +668,16 @@ begin-module usb-core
       ep0-handler-to-pico-callback then
   ;
 
+  \ De-queue bytes from ring buffer to EP1 dpram and send packet to host 
   : ep1-start-ring-transfer-to-host ( -- )
     tx-used 64 min { tx-bytes }
-    tx-bytes 0 do \ de-queue bytes from ring buffer to EP1 dpram
+    tx-bytes 0 do 
       read-tx EP1-to-Host dpram-address @ i + c!
     loop
     EP1-to-Host tx-bytes usb-send-data-packet
   ;
 
+  \ USB buffer completion IRQ handler - CDC data from console to host
   : ep1-handler-to-host ( -- )
     EP1-to-Host usb-update-transfer-bytes
     EP1-to-Host usb-toggle-data-pid
@@ -663,7 +693,7 @@ begin-module usb-core
     then
   ;
 
-  \ add EP1 received data to rx ring buffer
+  \ Add EP1 received data to rx ring buffer and process special characters (if enabled)
   : ep1-handler-to-pico ( -- )
     EP1-to-Pico usb-update-transfer-bytes
     EP1-to-Pico usb-toggle-data-pid
@@ -695,18 +725,22 @@ begin-module usb-core
     then
   ;
 
+  \ USB buffer completion IRQ handler - CDC line state notification to Host
   : ep3-handler-to-host ( -- )
     EP3-to-Host usb-toggle-data-pid
     false EP3-to-Host endpoint-busy? !
     true line-notification-complete? !
     \ nothing else to do here for line state nofification
+    \ N.B. no corresponding EP3-to-Pico endpoint required
   ;
 
+  \ USB buffer completion handler distribution - Control EP0 to/from Host
   : usb-buffer-status-control-endpoints ( -- )
     USB_BUFFER_STATUS @ USB_BUFFER_STATUS_EP0_TO_HOST and if ep0-handler-to-host then
     USB_BUFFER_STATUS @ USB_BUFFER_STATUS_EP0_TO_PICO and if ep0-handler-to-pico then
   ;
 
+  \ USB buffer completion handler distribution - EP1 and EP3 CDC function endpoints
   : usb-buffer-status-function-endpoints ( -- )
     \ clear all buffer status IRQ in advance for any read-blocking Linux clients (e.g. Minicom)
     USB_BUFFER_STATUS @ dup { buffer-status } USB_BUFFER_STATUS !
@@ -715,25 +749,26 @@ begin-module usb-core
     buffer-status USB_BUFFER_STATUS_EP3_TO_HOST and if ep3-handler-to-host then
   ;
 
+  \ USB buffer completion handler routing
   : usb-handle-buffer-status ( -- )
-    \ EP0-to-Host and/or EP0-to-Pico
-    USB_BUFFER_STATUS @ USB_BUFFER_STATUS_EP0 and if
+    USB_BUFFER_STATUS @ USB_BUFFER_STATUS_EP0 and if  \ EP0-to-Host and/or EP0-to-Pico
       usb-buffer-status-control-endpoints
     else
       usb-buffer-status-function-endpoints
     then
   ;
 
+  \ Device connected to active USB host (SIE = Serial Interface Engine)
   : usb-handle-device-connect ( -- )
-    USB_SIE_STATUS USB_SIE_STATUS_DEVICE_CONNECTED and if
+    USB_SIE_STATUS USB_SIE_STATUS_DEVICE_CONNECTED and if  \ 
       true usb-device-connected? !
     else
       false usb-device-connected? !
     then
-    USB_SIE_STATUS_DEVICE_CONNECTED USB_SIE_STATUS bis!  \ write to clear
+    USB_SIE_STATUS_DEVICE_CONNECTED USB_SIE_STATUS bis!  \ write to clear 
   ;
 
-  \ general USB interrupt handler
+  \ General USB hardware interrupt handler
   : usb-irq-handler ( -- )
     USB_INTS @ { ints }
     ints USB_INTS_START_OF_FRAME and if usb-handle-start-of-frame then
@@ -743,6 +778,7 @@ begin-module usb-core
     ints USB_INTS_DEV_CONNECT and if usb-handle-device-connect then
   ;
 
+  \ Prepare registers and simulate physical insertion of device to host
   : usb-insert-device ( -- )
     USB_INTS_BUS_RESET              USB_INTE bis!
     USB_INTS_SETUP_REQ              USB_INTE bis!
@@ -752,15 +788,12 @@ begin-module usb-core
     USB_SIE_CTRL_PULLUP_EN          USB_SIE_CONTROL bis!
   ;
 
+  \ Clear registers and simulate physical removal of device from host
   : usb-remove-device ( -- )
-    USB_INTS_BUS_RESET              USB_INTE bic!
-    USB_INTS_SETUP_REQ              USB_INTE bic!
-    USB_INTS_DEV_CONNECT            USB_INTE bic! 
-    USB_INTS_BUFFER_STATUS          USB_INTE bic!
-    USB_INTS_START_OF_FRAME         USB_INTE bic!
-    USB_SIE_CTRL_PULLUP_EN          USB_SIE_CONTROL bic!
-    USB_SIE_CTRL_EP0_INT_1BUF       USB_SIE_CONTROL bic!
-    USB_MAIN_CTRL_CONTROLLER_EN     USB_MAIN_CONTROL bic!
+    0 USB_INTE !
+    0 USB_INTS !
+    0 USB_SIE_CONTROL !
+    0 USB_MAIN_CONTROL !
   ;
 
   \ Get DTR (Data Terminal Ready) signal setting from host client
@@ -773,13 +806,14 @@ begin-module usb-core
     DSR? @ DCD? @ and line-notification-complete? @ and
   ;
   
+  \ Reset USB hardware and wait until complete
   : reset-usb-hardware ( -- )
     RESETS_USBCTRL RESETS_RESET_Set !
     RESETS_USBCTRL RESETS_RESET_Clr !
     begin RESETS_RESET_DONE @ not RESETS_USBCTRL and while repeat
   ;
 
-  \ Initialize USB
+  \ Initialize USB hardware and variables
   : init-usb ( -- )
     init-port-signals
     reset-usb-hardware
@@ -787,6 +821,7 @@ begin-module usb-core
     0 sof-callback-handler !
     USB_DPRAM_Base dpram-size 0 fill
     init-usb-default-endpoints
+    true usb::usb-special-enabled? !
     false usb-device-connected? !
     false usb-device-configured? !
     false line-notification-complete? !
@@ -801,15 +836,11 @@ begin-module usb-core
     USB_USB_MUXING_SOFTCON                USB_USB_MUXING bis!
     USB_USB_PWR_VBUS_DETECT               USB_USB_POWER bis!
     USB_USB_PWR_VBUS_DETECT_OVERRIDE_EN   USB_USB_POWER bis!
-
-    rp2350? if                            \ clear bit to remove isolation
-      USB_MAIN_CTRL_PHY_ISOLATE           USB_MAIN_CONTROL bic!
-    then
-
+    rp2350? if USB_MAIN_CTRL_PHY_ISOLATE  USB_MAIN_CONTROL bic! then \ clear bit to remove isolation
     USB_MAIN_CTRL_CONTROLLER_EN           USB_MAIN_CONTROL bis!
-
     usbctrl-irq NVIC_ISER_SETENA!
-
+   
+    \ Attempt orderly reboot - allow client time to respond to modem going offline
     reboot-hook @ saved-reboot-hook !
     [:
       saved-reboot-hook @ ?execute

@@ -1,7 +1,6 @@
 # zeptoforth usb staging
 
-## New for this release RC1
+## New for this release RC5
 
-* Turnkey operation ( if used - sample provided )
-* Support for USB power-only usage ( after 20 second delay )
-
+* Add comments to word definitions
+* Minor improvements to ep-x setup
