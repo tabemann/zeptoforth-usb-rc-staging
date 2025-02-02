@@ -1,6 +1,5 @@
 # zeptoforth usb staging
 
-## New for this release RC5
+## New for this release
 
-* Add comments to word definitions
-* Minor improvements to ep-x setup
+* Pull RC5 branch to main in preparation for next zeptoforth release.
